@@ -42,6 +42,9 @@ def main():
         setup(config_file)        
 
     config = read_config(config_file)
+    # backward compatibility with config files without 'ismisskey' attribute
+    if not hasattr(config,'ismisskey'):
+        config['ismisskey'] = False
 
     if config['ismisskey']:
         access_token=config['access_token']
