@@ -10,6 +10,9 @@ import feedparser
 
 from bs4 import BeautifulSoup
 from mastodon import Mastodon
+from misskey import Misskey, MiAuth
+from misskey.exceptions import MisskeyMiAuthFailedException
+
 from datetime import datetime, timezone, MINYEAR
 
 DEFAULT_CONFIG_FILE = os.path.join("~", ".feediverse")
@@ -40,12 +43,17 @@ def main():
 
     config = read_config(config_file)
 
-    masto = Mastodon(
-        api_base_url=config['url'],
-        client_id=config['client_id'],
-        client_secret=config['client_secret'],
+    if config['ismisskey']:
         access_token=config['access_token']
-    )
+        api_base_url=config['url']
+        mk = Misskey(api_base_url,i=access_token)
+    else:
+        masto = Mastodon(
+            api_base_url=config['url'],
+            client_id=config['client_id'],
+            client_secret=config['client_secret'],
+            access_token=config['access_token']
+        )
 
     newest_post = config['updated']
     dupes = config['dupecheck']
@@ -66,8 +74,10 @@ def main():
             if args.dry_run:
                 print("trial run, not tooting ", entry["title"][:50])
                 continue
-
-            masto.status_post(feed['template'].format(**entry)[:499])
+            if config['ismisskey']:
+                mk.notes_create(text=feed['template'].format(**entry)[:499])
+            else:
+                masto.status_post(feed['template'].format(**entry)[:499])
 
     if not args.dry_run:
         config['updated'] = newest_post.isoformat()
@@ -155,30 +165,47 @@ def read_config(config_file):
     return config
 
 def setup(config_file):
-    url = input('What is your Mastodon Instance URL? ')
+    url = input('What is your Mastodon/Misskey/Calckey Instance URL? ')
+    ismisskey = yes_no('Is the instance a Misskey/Calckey? ')
     have_app = yes_no('Do you have your app credentials already?')
     if have_app:
         name = 'feediverse'
-        client_id = input('What is your app\'s client id: ')
-        client_secret = input('What is your client secret: ')
+        client_id = input('What is your app\'s client id (not needed for Misskey/Calckey): ')
+        client_secret = input('What is your client secret (not needed for Misskey/Calckey): ')
         access_token = input('access_token: ')
     else:
         print("Ok, I'll need a few things in order to get your access token")
-        name = input('app name (e.g. feediverse): ') 
-        client_id, client_secret = Mastodon.create_app(
-            api_base_url=url,
-            client_name=name,
-            #scopes=['read', 'write'],
-            website='https://github.com/edsu/feediverse'
-        )
-        username = input('mastodon username (email): ')
-        password = input('mastodon password (not stored): ')
-        m = Mastodon(client_id=client_id, client_secret=client_secret, api_base_url=url)
-        access_token = m.log_in(username, password)
+        name = input('app name (e.g. feediverse): ')
+        if ismisskey:
+            # generate an authentication object with specific permissions
+            auth = MiAuth(url, name=name, permission=['read:account','write:notes'])
+            # generate an authentication URL
+            authurl = auth.generate_url()
+            unused = input(f'Use a browser to reach this URL, login and accept permissions: {authurl}, then press ENTER here')
+            try:
+                access_token = auth.check()
+                client_id = ''
+                client_secret = ''
+            except MisskeyMiAuthFailedException as e:
+                print(e, file=sys.stderr)
+                print("Misskey authentication failed, exiting...")
+                exit(1)
+        else: 
+            client_id, client_secret = Mastodon.create_app(
+                api_base_url=url,
+                client_name=name,
+                #scopes=['read', 'write'],
+                website='https://github.com/ferdinandosimonetti/feediverse'
+            )
+            username = input('mastodon username (email): ')
+            password = input('mastodon password (not stored): ')
+            m = Mastodon(client_id=client_id, client_secret=client_secret, api_base_url=url)
+            access_token = m.log_in(username, password)
 
     feed_url = input('RSS/Atom feed URL to watch: ')
     old_posts = yes_no('Shall already existing entries be tooted, too?')
     config = {
+        'ismisskey': ismisskey,
         'name': name,
         'url': url,
         'client_id': client_id,

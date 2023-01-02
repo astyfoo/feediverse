@@ -4,7 +4,9 @@ Please use it responsibly.
 
 ## Install
 
-    pip install feediverse
+```
+    python3 setup.py install
+```
 
 ## Run
 
@@ -19,6 +21,12 @@ Once *feediverse* is configured you can add it to your crontab:
     */15 * * * * /usr/local/bin/feediverse    
 
 Run `feediverse --help` to show the command line options.
+
+## Misskey/Calckey support
+
+This one needs user interaction on an external browser, to log in and accept the token creation.
+
+It's enabled via a question asked during the first run of the tool.
 
 ## Post Format
 
