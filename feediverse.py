@@ -11,7 +11,7 @@ import feedparser
 from bs4 import BeautifulSoup
 from mastodon import Mastodon
 from misskey import Misskey, MiAuth
-from misskey.exceptions import MisskeyMiAuthFailedException
+from misskey.exceptions import MisskeyMiAuthFailedException, MisskeyAPIException
 
 from datetime import datetime, timezone, MINYEAR
 
@@ -49,7 +49,17 @@ def main():
     if config['ismisskey']:
         access_token=config['access_token']
         api_base_url=config['url']
-        mk = Misskey(api_base_url,i=access_token)
+        try:
+            mk = Misskey(api_base_url,i=access_token)
+        except MisskeyMiAuthFailedException as e:
+            print(e, file=sys.stderr)
+            print("Misskey token not valid (anymore?), exiting...")
+            exit(1)
+        except MisskeyAPIException as e:
+            print(e, file=sys.stderr)
+            print("Misskey instance not ready? Exiting...")
+            exit(1)
+                    
     else:
         masto = Mastodon(
             api_base_url=config['url'],
@@ -187,12 +197,16 @@ def setup(config_file):
             unused = input(f'Use a browser to reach this URL, login and accept permissions: {authurl}, then press ENTER here')
             try:
                 access_token = auth.check()
-                client_id = ''
-                client_secret = ''
             except MisskeyMiAuthFailedException as e:
                 print(e, file=sys.stderr)
                 print("Misskey authentication failed, exiting...")
                 exit(1)
+            except MisskeyAPIException as e:
+                print(e, file=sys.stderr)
+                print("Misskey instance not ready? Exiting...")
+                exit(1)
+            client_id = ''
+            client_secret = ''
         else: 
             client_id, client_secret = Mastodon.create_app(
                 api_base_url=url,
